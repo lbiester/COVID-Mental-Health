@@ -1,0 +1,15 @@
+nltk==3.5
+numpy==1.18.2
+argparse_utils==1.2.0
+fbprophet==0.6
+matplotlib==3.2.1
+base36==0.1.1
+spacy==2.2.4
+tqdm==4.45.0
+pandas==1.0.3
+scipy==1.4.1
+statsmodels==0.11.1
+gensim==3.8.3
+psycopg2==2.8.5
+ipython==7.19.0
+python_dateutil==2.8.1
