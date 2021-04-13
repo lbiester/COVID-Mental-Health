@@ -35,7 +35,6 @@ class TopicModel:
         Train Mallet LDA topic model (http://mallet.cs.umass.edu/index.php)
         :param mallet_path: path to mallet model (e.g. /home/katiemat/tools/mallet-2.0.8/bin/mallet)
         :param workers: number of threads to use in training model (-1 = all possible)
-        :param verbose: if True, print details of training
         """
         if self.model is not None:
             print("Existing model found. Deleting and retraining.")

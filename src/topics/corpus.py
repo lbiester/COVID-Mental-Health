@@ -10,8 +10,8 @@ from copy import deepcopy
 from datetime import datetime
 from typing import List, Tuple, Dict, Any
 
-from IPython import embed
 import gensim.corpora as corpora
+from argparse_utils import enum_action
 
 from src.enums import PostType
 from src.data_utils import get_utc_timestamp, get_posts_by_subreddit, read_file_by_lines
@@ -248,6 +248,7 @@ def load_corpus_data(input_dir: str, corpus_name: str) -> Tuple[List[str], List[
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--subreddits", type=str, nargs="+", help="List of subreddits (if not using a file)")
     parser.add_argument("--subreddit_file", type=str, help="Path to file with list of subreddits")
     parser.add_argument("--name", type=str, help="Name of corpus. Used in naming files when corpus data is saved.")
     parser.add_argument("--start_date", type=str, default="08/12/2019",
@@ -261,7 +262,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--downsample", action='store_true', help='If true, randomly downsample the data so that an '
                                                                   'even number of posts and comments from each '
                                                                   'subreddit are selected.')
+    parser.add_argument("--post_type", action=enum_action(PostType), default=PostType.POST, help="Post type to process")
     args = parser.parse_args()
+    if ((args.subreddits is not None and args.subreddit_file is not None)
+            or (args.subreddits is None and args.subreddit_file is None)):
+        parser.error("Must specify subreddits OR subreddit_file")
     return args
 
 
@@ -276,14 +281,17 @@ def main() -> None:
     """
     # process arguments
     args = _parse_args()
-    subreddits = read_file_by_lines(args.subreddit_file)
+    if args.subreddit_file:
+        subreddits = read_file_by_lines(args.subreddit_file)
+    else:
+        subreddits = args.subreddits
     # covert dates to datetime objects
     start_dt = _datetime_str_to_obj(args.start_date)
     end_dt = _datetime_str_to_obj(args.end_date)
 
     # create corpus
     init_time = time.time()
-    corpus = Corpus(start_dt, end_dt, subreddits, args.name, downsample=args.downsample)
+    corpus = Corpus(start_dt, end_dt, subreddits, args.name, downsample=args.downsample, post_type=args.post_type)
     create_time = time.time()
     print("Created corpus (posts by subreddit + doc list) in time {}".format(create_time - init_time))
     corpus.prepocess_posts()

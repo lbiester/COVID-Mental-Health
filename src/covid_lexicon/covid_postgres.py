@@ -5,17 +5,26 @@ import base36
 import numpy as np
 from psycopg2.extensions import cursor
 
-READ_BY_ID_STMT = "SELECT * FROM covid_term_count WHERE reddit_id = {} and comment = {}"
-INSERT_COMMAND_FMT = "INSERT INTO covid_term_count VALUES ({}) ON CONFLICT DO NOTHING"
-EXISTS_STMT = "select 1 from covid_term_count WHERE reddit_id = {} and comment = {}"
+# format of table name: base name + _ + last post dump date + _ + last comment dump date
+from src import config
+
+# determine table name based on availability and use of post/comment files
+dap = config.DUMP_AVAILABLE_POSTS
+dac = config.DUMP_AVAILABLE_COMMENTS
+
+TABLE_NAME = "covid_term_count" if not config.USE_DUMPS \
+    else f"covid_term_count_{dap}_{dac}"
+
+READ_BY_ID_STMT = f"SELECT * FROM {TABLE_NAME} WHERE reddit_id = {{}} and comment = {{}}"
+INSERT_COMMAND_FMT = f"INSERT INTO {TABLE_NAME } VALUES ({{}}) ON CONFLICT DO NOTHING"
+EXISTS_STMT = f"select 1 from {TABLE_NAME} WHERE reddit_id = {{}} and comment = {{}}"
 GET_COLUMNS_STMT = "SELECT column_name FROM information_schema.columns WHERE table_catalog = 'reddit_features' " \
-                   "and table_name = 'covid_term_count' ORDER BY ordinal_position"
-EXISTS_MULTIPLE_STMT = "SELECT reddit_id FROM covid_term_count WHERE reddit_id IN ({}) and comment = {}"
+                   f"and table_name = '{TABLE_NAME}' ORDER BY ordinal_position"
+EXISTS_MULTIPLE_STMT = f"SELECT reddit_id FROM {TABLE_NAME} WHERE reddit_id IN ({{}}) and comment = {{}}"
 
 # columns used for searching (as opposed to storing count data)
 SEARCH_COLUMNS = ["reddit_id", "comment", "subreddit", "date", "author"]
 WORD_COUNT_COL = "word_count"
-
 
 
 def get_feature_names(csr: cursor) -> List[str]:

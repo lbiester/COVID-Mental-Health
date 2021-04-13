@@ -134,6 +134,7 @@ config.txt
 .idea/
 data/user_location_tags.csv
 .DS_Store
+data/topic_model/corpus/*
 
 # Katie's additions
 data/MH_topic_model_train_*

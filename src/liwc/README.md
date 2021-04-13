@@ -15,5 +15,7 @@ PYTHONPATH=. python3 src/liwc/liwc_reddit_processor.py --subreddit <subreddit yo
 
 Then, get the averages for each subreddit using `compute_avg_liwc_features_by_dt.py`:
 ```bash
-PYTHONPATH=. python3 src/liwc/compute_avg_liwc_features_by_dt.py --subreddits anxiety depression suicidewatch
+PYTHONPATH=. python3 src/liwc/compute_avg_liwc_features_by_dt.py --subreddits <list of subreddits>
 ```
+
+The features can then be normalized and combined for Prophet modeling with the scripts in `src/combine_features`

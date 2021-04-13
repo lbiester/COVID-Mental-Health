@@ -11,7 +11,6 @@ import gensim
 import gensim.corpora as corpora
 import numpy as np
 import pandas as pd
-from IPython import embed
 
 from src.data_utils import read_file_by_lines, post_type_str_to_enum, get_posts_by_subreddit
 from src.enums import PostType
@@ -29,6 +28,9 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument('--vocab_path', type=str, help="Path to vocab dictionary to use to map corpus texts to"
                                                        " term-frequency representation. If not provided, will use the"
                                                        " term-frequency representation created during corpus creation.")
+    parser.add_argument("--mallet_path", type=str, help="Path to mallet binary - by default, will use whatever is"
+                                                        " stored in the topic model file")
+    parser.add_argument("--new_corpus_name", type=str, help="Alternative corpus name to use for output file")
     args = parser.parse_args()
     return args
 
@@ -106,9 +108,12 @@ def main():
 
     # load topic model
     topic_model = gensim.models.wrappers.ldamallet.LdaMallet.load(args.topic_model_path)
+    if args.mallet_path is not None:
+        topic_model.mallet_path = args.mallet_path
 
     # compute and save metrics
-    get_doc_topic_metrics(doc_tf_list, idx2date, topic_model, args.output_dir, args.corpus_name, args.post_type)
+    output_corpus_name = args.corpus_name if args.new_corpus_name is None else args.new_corpus_name
+    get_doc_topic_metrics(doc_tf_list, idx2date, topic_model, args.output_dir, output_corpus_name, args.post_type)
 
 
 if __name__ == "__main__":

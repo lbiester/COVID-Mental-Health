@@ -1,5 +1,5 @@
 """
-Script to generate Figures 2, 3, and 4
+Script to generate Figures 3-8
 """
 import argparse
 import itertools
@@ -18,13 +18,12 @@ from src.data_utils import get_mh_subreddits
 PROPHET_OUTPUT_DIR = "data/prophet_output/"
 GRAPH_SETTINGS = "data/graph_settings.csv"
 ALPHA = 0.05
-PROPHET_SETTING_STR = "2017-01-01.2020-03-01.2020-05-31.True.0.95.additive"
 
 
 def plot_each_subreddit_plus_individual(feature_type: str, feature_name: str,
                                         ylabel: str = "% of words", multiplier: int = 100,
                                         title_category: Optional[str] = None, show_title: bool = False,
-                                        setting: str = PROPHET_SETTING_STR,
+                                        setting: str = "2017-01-01.2020-03-01.2020-05-31.True.0.95.additive",
                                         post_type: Optional[str] = None, include_legend: bool = False,
                                         bonferroni_num: Optional[int] = None, large_fonts: bool = True,
                                         suffix: Optional[str] = None):
@@ -51,7 +50,7 @@ def plot_each_subreddit_plus_individual(feature_type: str, feature_name: str,
     is_significant = {}
     for subreddit in get_mh_subreddits():
         setting_dir = os.path.join(
-            PROPHET_OUTPUT_DIR, f"{subreddit.lower()}{pt}{suffix}.{feature_name}",
+            PROPHET_OUTPUT_DIR, f"{subreddit.lower()}{pt}{suffix}_baseline_avg{pt}{suffix}_difference.{feature_name}",
             setting)
         preprocessed_ts = pd.read_csv(os.path.join(setting_dir, "preprocessed_timeseries.csv"), index_col=0,
                                       squeeze=True, parse_dates=[0])
@@ -69,10 +68,20 @@ def plot_each_subreddit_plus_individual(feature_type: str, feature_name: str,
         is_significant[subreddit] = pval < cutoff and outside_ci >= 5
 
     grey_map = cm.get_cmap("Greys")
-    blue_map = cm.get_cmap("Blues")
+
+    subr_colors = {
+        "Anxiety": cm.get_cmap("Oranges"),
+        "depression": cm.get_cmap("Blues"),
+        "SuicideWatch": cm.get_cmap("Greens"),
+    }
+    subr_styles = {
+        "Anxiety": "dashed",
+        "depression": "dotted",
+        "SuicideWatch": "dashdot",
+    }
 
     # create plot starting in 2019
-    fig, axes = plt.subplots(figsize=(6, 5), nrows=3, sharex=True)
+    fig, axes = plt.subplots(figsize=(6, 6.7), nrows=4, sharex=True)
     start = "2019"
     legend = False
     for i, subreddit in enumerate(get_mh_subreddits()):
@@ -80,10 +89,10 @@ def plot_each_subreddit_plus_individual(feature_type: str, feature_name: str,
         ax = axes.flat[i]
         sub_series = timeseries.loc[subreddit][start:].mul(multiplier)
         sub_series["True"].plot.line(ax=ax, label="true values", legend=legend,
-                                     color=grey_map(0.8), fontsize=other_fonts)
+                                     color=subr_colors[subreddit](0.8), fontsize=other_fonts)
         sub_series["Forecast"].plot.line(ax=ax, label="forecast", legend=legend,
-                                         color=grey_map(0.5), fontsize=other_fonts)
-        ax.fill_between(sub_series.index, sub_series["Lower"], sub_series["Upper"], color=blue_map(0.3),
+                                         color=subr_colors[subreddit](0.5), fontsize=other_fonts)
+        ax.fill_between(sub_series.index, sub_series["Lower"], sub_series["Upper"], color=subr_colors[subreddit](0.3),
                         label="95% prediction interval (shaded)")
         add = "*" if is_significant[subreddit] else ""
         ax.set_title(f"r/{subreddit} Difference {add}", fontsize=title_fonts)
@@ -92,6 +101,24 @@ def plot_each_subreddit_plus_individual(feature_type: str, feature_name: str,
     handles, labels = axes[0].get_legend_handles_labels()
 
     handles[2] = Patch(facecolor=grey_map(0.3), edgecolor=grey_map(0.3), label='Color Patch')
+
+    # plot the individual series
+    ax = axes.flat[3]
+    series_path_fmt = "data/timeseries/journal/normalized/{feature_type}/{subreddit}{pt}{suffix}.csv"
+    for subreddit in get_mh_subreddits():
+        # load individual series
+        series_path = series_path_fmt.format(feature_type=feature_type, subreddit=subreddit.lower(), suffix=suffix,
+                                             pt=pt)
+        series = pd.read_csv(series_path, parse_dates=[0], index_col=0)[feature_name][start:]
+        series.rolling(7).mean().plot.line(label=f"r/{subreddit}", ax=ax, color=subr_colors[subreddit](0.8),
+                                           linestyle=subr_styles[subreddit], fontsize=other_fonts)
+
+    series_path = series_path_fmt.format(feature_type=feature_type, subreddit="baseline_avg", suffix=suffix, pt=pt)
+    series = pd.read_csv(series_path, parse_dates=[0], index_col=0)[feature_name][start:]
+    series.rolling(7).mean().plot.line(label="Control", ax=ax, color=grey_map(0.8), fontsize=other_fonts)
+    ax.axvline(datetime(2020, 3, 1), color="grey", linestyle="dotted")
+    ax.set_title("Raw Series", fontsize=title_fonts)
+    ax.set_xlabel(None)
 
     fig.text(0, 0.5, ylabel, va="center", rotation="vertical", fontsize=other_fonts)
 
@@ -102,9 +129,7 @@ def plot_each_subreddit_plus_individual(feature_type: str, feature_name: str,
     else:
         plt.tight_layout()
 
-    os.makedirs(os.path.join("graphs", feature_type), exist_ok=True)
     plt.savefig(f"graphs/{feature_type}/{feature_name}{pt}.png")
-    plt.close(fig)
     plt.close(fig)
     if include_legend:
         # legends are saved in external figures
@@ -120,7 +145,7 @@ def plot_each_subreddit_plus_individual(feature_type: str, feature_name: str,
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--feature_type",
-                        choices=["user_count", "liwc", "topic"],
+                        choices=["post_count", "liwc", "graph", "topic"],
                         required=True,
                         help="The type of features to create graphs for")
     return parser.parse_args()
@@ -133,9 +158,18 @@ def main():
 
     for setting in tqdm(graph_settings):
         bonferroni = len(graph_settings_df[graph_settings_df["bonferroni_group"] == setting["bonferroni_group"]]) * 3
-        plot_each_subreddit_plus_individual(setting["feature_type"], setting["feature_name"], post_type="post",
-                                            multiplier=1, ylabel=setting["Axis Label"], large_fonts=True,
-                                            suffix=setting["suffix"], bonferroni_num=bonferroni)
+        if setting["use_post_type"] == "yes":
+            bonferroni *= 2
+            plot_each_subreddit_plus_individual(setting["feature_type"], setting["feature_name"], post_type="post",
+                                                multiplier=1, ylabel=setting["Axis Label"], large_fonts=True,
+                                                suffix=setting["suffix"], bonferroni_num=bonferroni)
+            plot_each_subreddit_plus_individual(setting["feature_type"], setting["feature_name"], post_type="comment",
+                                                multiplier=1, ylabel=setting["Axis Label"], large_fonts=True,
+                                                suffix=setting["suffix"], bonferroni_num=bonferroni)
+        else:
+            plot_each_subreddit_plus_individual(setting["feature_type"], setting["feature_name"],
+                                                multiplier=1, ylabel=setting["Axis Label"], large_fonts=True,
+                                                suffix=setting["suffix"], bonferroni_num=bonferroni)
 
 
 if __name__ == "__main__":

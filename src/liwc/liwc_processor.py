@@ -11,7 +11,7 @@ from src.config import LIWC_2015_PATH
 from src.text_utils import remove_special_chars
 
 
-class LIWCProcessor():
+class LIWCProcessor:
     TOKEN_TO_IDX_PATH = f"{LIWC_2015_PATH}_token_to_idx.pickle"
     SAVE_TOKEN_TO_IDX_FREQUENCY = 1000
     SAVE_TOKEN_TO_IDX_NEW_TOKENS = 1000
@@ -55,12 +55,14 @@ class LIWCProcessor():
         return features
 
     def load_token_to_idx(self) -> Dict[str, Tuple[int]]:
-        if os.path.isfile(self.TOKEN_TO_IDX_PATH):
-            with open(self.TOKEN_TO_IDX_PATH, "rb") as f:
-                categories, token_to_idx = pickle.load(f)
-                if categories == self.liwc_categories:
-                    return token_to_idx
-        return {}
+        try:
+            if os.path.isfile(self.TOKEN_TO_IDX_PATH):
+                with open(self.TOKEN_TO_IDX_PATH, "rb") as f:
+                    categories, token_to_idx = pickle.load(f)
+                    if categories == self.liwc_categories:
+                        return token_to_idx
+        except:
+            return {}
 
     def save_token_to_idx(self):
         # only save token_to_idx if meeting two thresholds, for number of items processed and number of new tokens

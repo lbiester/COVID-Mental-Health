@@ -1,6 +1,5 @@
 import re
 
-from IPython import embed
 import gensim
 from gensim.utils import simple_preprocess
 from gensim.models import CoherenceModel

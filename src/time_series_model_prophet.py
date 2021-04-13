@@ -16,7 +16,6 @@ from argparse_utils import date_action
 from fbprophet import Prophet
 from matplotlib.figure import Figure
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
-from IPython import embed
 
 from src import config
 from src.stat_utils import ttest_confidence_interval_autocorr_correction
@@ -319,7 +318,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--data_files",
                         required=True,
                         nargs="+",
-                        help="File(s) containing daily timeseries data (daily means, not preprocessed)")
+                        help="File(s) containing daily timeseries data (daily means, no rolling mean)")
     parser.add_argument("--data_column",
                         help="Name of column to analyze. If not specified, goes through all columns")
     parser.add_argument("--do_not_model_holidays",

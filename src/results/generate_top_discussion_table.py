@@ -1,26 +1,29 @@
 """
-Script to generate Tables 2 and 3
+Script to generate Tables 4, 5, and 6
 """
 import argparse
 import itertools
 import os
-from typing import List
+from typing import List, Optional
 
 import pandas as pd
+from argparse_utils import enum_action
 
 from src.data_utils import get_mh_subreddits
+from src.enums import PostType
+from src.graph.process_and_aggregate_graph_features import SELECT_FEATURES_GRAPH
 from src.liwc.liwc_processor import LIWCProcessor
 
 PROPHET_OUTPUT_DIR = "data/prophet_output/"
 TABLE_SETTINGS = "data/graph_settings.csv"
 ALPHA = 0.05
-BONFERRONI = 294
+BONFERRONI = 588
 PROPHET_SETTING_STR = "2017-01-01.2020-03-01.2020-05-31.True.0.95.additive"
 LIWC_CATEGORIES = LIWCProcessor().liwc_categories
 
 
 # create dataframe to store results
-def get_outside_ci_percent(categories: List[str], feature_format_str: str) -> pd.DataFrame:
+def get_outside_ci_percent(categories: List[str], feature_suffix: str, post_type: Optional[PostType]) -> pd.DataFrame:
     """
     Create a dataframe to store all results
     :return: the dataframe
@@ -32,12 +35,11 @@ def get_outside_ci_percent(categories: List[str], feature_format_str: str) -> pd
 
     for subreddit in lower_subreddits:
         for category in categories:
-            if feature_format_str is None:
-                feature_name = f"post.{category}"
-            else:
-                feature_name = feature_format_str.format("post", category)
-            setting_dir = os.path.join(PROPHET_OUTPUT_DIR, f"{subreddit.lower()}_{feature_name}",
-                                       PROPHET_SETTING_STR)
+            pt = f"_{post_type.name.lower()}" if post_type is not None else ""
+            feature_suffix = f"_{feature_suffix}" if feature_suffix is not None else ""
+            feature_path = f"{subreddit.lower()}{pt}{feature_suffix}_" \
+                           f"baseline_avg{pt}{feature_suffix}_difference.{category}"
+            setting_dir = os.path.join(PROPHET_OUTPUT_DIR, feature_path, PROPHET_SETTING_STR)
             setting_results = pd.read_csv(os.path.join(setting_dir, "computed_results.csv"), index_col=0)
 
             outside_ci = setting_results.loc["Outside CI post-COVID"].item()
@@ -76,13 +78,13 @@ def add_subreddit_header(df: pd.DataFrame, subreddit: str) -> pd.DataFrame:
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--feature_type",
-                        choices=["liwc", "topic"],
+                        choices=["liwc", "topic", "graph"],
                         required=True,
-                        help="The type of features to create graphs for")
-    parser.add_argument("--feature_format_str",
-                        help="Format str (using {}) that will be filled with the feature name and post type to load"
-                             "results")
-    # NOTE: for topics, with the file setup we have, feature_format_str should be 17_20_{}_topic_dist.{}
+                        help="The type of features to create tables for")
+    parser.add_argument("--feature_suffix",
+                        help="Additional suffix used in output - we use topic_dist for topics")
+    parser.add_argument("-pt", "--post_type", dest="post_type", action=enum_action(PostType), required=False,
+                        help="Post type to process - do not use for graph")
     return parser.parse_args()
 
 
@@ -91,10 +93,12 @@ def main():
 
     if args.feature_type == "liwc":
         categories = LIWC_CATEGORIES
+    elif args.feature_type == "graph":
+        categories = SELECT_FEATURES_GRAPH
     else:
         categories = [f"topic_{i}" for i in range(25)]
 
-    outside_ci_percent = get_outside_ci_percent(categories, args.feature_format_str)
+    outside_ci_percent = get_outside_ci_percent(categories, args.feature_suffix, args.post_type)
 
     anxiety = add_subreddit_header(get_top_ten_by_subreddit(outside_ci_percent, "anxiety"), "Anxiety")
     depression = add_subreddit_header(get_top_ten_by_subreddit(outside_ci_percent, "depression"), "depression")

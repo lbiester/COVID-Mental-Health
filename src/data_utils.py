@@ -46,29 +46,30 @@ def get_mh_subreddits() -> List[str]:
     """
     Get a list of mental health subreddits from a file
     """
-    return read_file_by_lines("data/mh_subreddits.txt")
+    return read_file_by_lines("data/subreddit_lists/mh_subreddits.txt")
 
 
 def get_coronavirus_subreddits() -> List[str]:
     """
     Get a list of mental health subreddits from a file
     """
-    return read_file_by_lines("data/coronavirus_subreddits.txt")
+    return read_file_by_lines("data/subreddit_lists/coronavirus_subreddits.txt")
 
 
 def get_baseline_subreddits() -> List[str]:
     """
     Get a list of our baseline subreddits from a file
     """
-    return read_file_by_lines("data/baseline_subreddits.txt")
+    return read_file_by_lines("data/subreddit_lists/baseline_subreddits/baseline_subreddits.txt")
 
 
-def _get_month_from_json_filename(json_filename: str) -> str:
+def _get_month_from_json_filename(json_file_path: str) -> str:
     """
     Get the month represented by a JSON filename as a YYYYMM string
-    :param json_filename: Filename with the format YYYYMM.jsonl
+    :param json_file_path: Filename with the format YYYYMM.jsonl
     """
-    return re.match(r"([0-9]{6}).jsonl", json_filename).group(1)
+    filename = os.path.split(json_file_path)[1]
+    return re.match(r"([0-9]{6}).jsonl", filename).group(1)
 
 
 def get_subreddit_users(subreddit_name: str, start_timestamp: Union[datetime.datetime, int, None] = None,
@@ -95,7 +96,8 @@ def get_posts_by_subreddit(subreddits: List[str], post_type: PostType, propertie
                            remap_properties: Optional[Dict[str, str]] = None,
                            start_time: Union[datetime.datetime, int, None] = None,
                            end_time: Union[datetime.datetime, int, None] = None, desc: bool = False,
-                           filter_dates_strict: bool = False, ignore_automoderator: bool = False) \
+                           filter_dates_strict: bool = False, ignore_automoderator: bool = False,
+                           filter_removed: bool = True) \
         -> Dict[str, List[dict]]:
     """
     Get data from all subreddits in subreddits list. Returns a dictionary mapping subreddit name to a list
@@ -110,6 +112,7 @@ def get_posts_by_subreddit(subreddits: List[str], post_type: PostType, propertie
     :param filter_dates_strict: if True, make sure post doesn't just come from subreddit file of the correct month
                                 but verify that it's 'created_utc' actually falls within the given interval
     :param ignore_automoderator: Ignore the automoderator
+    :param filter_removed: Ignore data that has been deleted/removed
     """
     data_by_subreddit = {}
     for subreddit in subreddits:
@@ -118,7 +121,8 @@ def get_posts_by_subreddit(subreddits: List[str], post_type: PostType, propertie
             properties.append('created_utc')
         post_list = list(get_subreddit_json(subreddit, post_type, properties=properties,
                                             remap_properties=remap_properties, start_time=start_time,
-                                            end_time=end_time, desc=desc, ignore_automoderator=ignore_automoderator))
+                                            end_time=end_time, desc=desc, ignore_automoderator=ignore_automoderator,
+                                            filter_removed=filter_removed))
         # since get_subreddit_json rounds start & end times to nearest months, filter out posts that don't
         # actually fall within the given range
         if filter_dates_strict:
@@ -132,7 +136,7 @@ def get_subreddit_json(subreddit_name: str, post_type: PostType, properties: Opt
                        remap_properties: Optional[Dict[str, str]] = None,
                        start_time: Union[datetime.datetime, int, None] = None,
                        end_time: Union[datetime.datetime, int, None] = None, desc: bool = False,
-                       ignore_automoderator: bool = False) -> Iterator[dict]:
+                       ignore_automoderator: bool = False, filter_removed: bool = True) -> Iterator[dict]:
     """
     Get data from a subreddit. Returns an iterator, use list(get_subreddit_json(...)) to get a list
     :param subreddit_name: Name of the subreddit
@@ -143,10 +147,12 @@ def get_subreddit_json(subreddit_name: str, post_type: PostType, properties: Opt
     :param end_time: Timestamp to get data before, can be None, int, or datetime object
     :param desc: Reverse order
     :param ignore_automoderator: Ignore the automoderator
+    :param filter_removed: Ignore data that has been deleted/removed
     """
     return get_entity_json(EntityType.SUBREDDIT, subreddit_name, post_type, properties=properties,
                            remap_properties=remap_properties, start_time=start_time,
-                           end_time=end_time, desc=desc, ignore_automoderator=ignore_automoderator)
+                           end_time=end_time, desc=desc, ignore_automoderator=ignore_automoderator,
+                           filter_removed=filter_removed)
 
 
 def get_user_json(user_name: str, post_type: PostType, properties: List[str] = None,
@@ -171,7 +177,7 @@ def get_entity_json(entity_type: EntityType, entity_name: str, post_type: PostTy
                     properties: Optional[List[str]] = None, remap_properties: Optional[Dict[str, str]] = None,
                     start_time: Union[datetime.datetime, int, None] = None,
                     end_time: Union[datetime.datetime, int, None] = None, desc: bool = False,
-                    ignore_automoderator: bool = False) -> Iterator[dict]:
+                    ignore_automoderator: bool = False, filter_removed: bool = True) -> Iterator[dict]:
     """
     Same as get_subreddit_json and get_user_json, helper function that both use
     Calls _get_entity_json, which requires timestamps for dates and can't handle both posts and comments
@@ -184,7 +190,8 @@ def get_entity_json(entity_type: EntityType, entity_name: str, post_type: PostTy
             if ind_post_type != PostType.ALL:
                 all_results = itertools.chain(all_results, get_entity_json(
                     entity_type, entity_name, ind_post_type, properties=properties, remap_properties=remap_properties,
-                    start_time=start_time, end_time=end_time, desc=desc, ignore_automoderator=ignore_automoderator))
+                    start_time=start_time, end_time=end_time, desc=desc, ignore_automoderator=ignore_automoderator,
+                    filter_removed=filter_removed))
         return all_results
 
     # convert all time arguments to UTC timestamps if not None
@@ -194,33 +201,49 @@ def get_entity_json(entity_type: EntityType, entity_name: str, post_type: PostTy
     return itertools.chain.from_iterable(
         _get_entity_json(entity_type, entity_name, post_type, properties=properties, remap_properties=remap_properties,
                          start_timestamp=start_timestamp, end_timestamp=end_timestamp, desc=desc,
-                         ignore_automoderator=ignore_automoderator))
+                         ignore_automoderator=ignore_automoderator, filter_removed=filter_removed))
 
 
 def _get_entity_json(entity_type: EntityType, entity_name: str, post_type: PostType,
                      properties: Optional[List[str]] = None,
                      remap_properties: Dict[str, str] = None, start_timestamp: Union[int, None] = None,
-                     end_timestamp: Union[int, None] = None, desc: bool = False, ignore_automoderator: bool = False) \
-        -> List[dict]:
+                     end_timestamp: Union[int, None] = None, desc: bool = False, ignore_automoderator: bool = False,
+                     filter_removed: bool = True) -> List[dict]:
     """
     Helper function for get_entity_json
     """
-    file_dir = _get_json_dir(entity_type, entity_name, post_type)
-    sorted_files = sorted(os.listdir(file_dir), reverse=desc)
+    # get list of filenames - some will be from files, and some from API, if config.USE_DUMPS is True
+    file_dir_dump = _get_json_dump_dir(entity_type, entity_name, post_type)
+    file_dir_api = _get_json_api_dir(entity_type, entity_name, post_type)
+    sorted_api_files = sorted(os.listdir(file_dir_api), reverse=desc)
+    sorted_dump_files = sorted(os.listdir(file_dir_dump), reverse=desc)
+
+    if config.USE_DUMPS:
+        dump_available_cutoff = config.DUMP_AVAILABLE_POSTS \
+            if post_type == PostType.POST else config.DUMP_AVAILABLE_COMMENTS
+
+        use_dump_files = [os.path.join(file_dir_dump, filename) for filename in sorted_dump_files
+                          if _get_month_from_json_filename(filename) <= dump_available_cutoff]
+        use_api_files = [os.path.join(file_dir_api, filename) for filename in sorted_api_files
+                         if _get_month_from_json_filename(filename) > dump_available_cutoff]
+        sorted_files = sorted(use_dump_files + use_api_files, reverse=desc, key=lambda fp: os.path.split(fp)[-1])
+    else:
+        sorted_files = [os.path.join(file_dir_api, filename) for filename in sorted_api_files]
+
+    fetched_ids = set()
     properties = set(properties) if properties is not None else properties
-    for filename in sorted_files:
+    for file_path in sorted_files:
         file_json = []
-        file_start_timestamp, file_end_timestamp = get_month_timestamps(_get_month_from_json_filename(filename))
+        file_start_timestamp, file_end_timestamp = get_month_timestamps(_get_month_from_json_filename(file_path))
         if start_timestamp is not None and file_end_timestamp < start_timestamp:
             yield file_json
         elif end_timestamp is not None and file_start_timestamp > end_timestamp:
             yield file_json
         else:
-            full_path = os.path.join(file_dir, filename)
-            for json_obj in _read_reddit_json(entity_type, entity_name, full_path, post_type,
+            for json_obj in _read_reddit_json(entity_type, entity_name, file_path, post_type, fetched_ids,
                                               start_timestamp=start_timestamp, end_timestamp=end_timestamp, desc=desc,
                                               properties=properties, filter_moderators=False,
-                                              ignore_automoderator=ignore_automoderator):
+                                              ignore_automoderator=ignore_automoderator, filter_removed=filter_removed):
                 if remap_properties is not None:
                     remap_properties = remap_properties if remap_properties is not None else {}
                     json_obj = {remap_properties.get(k, k): v for k, v in json_obj.items()}
@@ -245,7 +268,7 @@ def get_utc_timestamp(datetime_obj: datetime.datetime) -> int:
     return int(datetime_obj.replace(tzinfo=datetime.timezone.utc).timestamp())
 
 
-def _get_json_dir(entity_type: EntityType, entity_name: str, post_type: PostType) -> str:
+def _get_json_api_dir(entity_type: EntityType, entity_name: str, post_type: PostType) -> str:
     """
     Get the appropriate directory to read JSON data
     :param entity_type: The type of the entity (subreddit or user)
@@ -253,6 +276,20 @@ def _get_json_dir(entity_type: EntityType, entity_name: str, post_type: PostType
     :param post_type: The type of post - post (submission) or comment
     """
     entity_type_dir = config.SUBREDDITS_DIR if entity_type == EntityType.SUBREDDIT else config.USERS_DIR
+    post_type_dir = "comments" if post_type == PostType.COMMENT else "posts"
+    return os.path.join(entity_type_dir, entity_name.lower(), post_type_dir, "json")
+
+
+def _get_json_dump_dir(entity_type: EntityType, entity_name: str, post_type: PostType) -> str:
+    """
+    Get the appropriate directory to read JSON data
+    :param entity_type: The type of the entity (subreddit or user)
+    :param entity_name: The name of the entity (entity = subreddit or user)
+    :param post_type: The type of post - post (submission) or comment
+    """
+    if entity_type == EntityType.USER:
+        raise Exception("No data from dumps for users is included yet")
+    entity_type_dir = config.MONTHLY_DUMPS_DIR
     post_type_dir = "comments" if post_type == PostType.COMMENT else "posts"
     return os.path.join(entity_type_dir, entity_name.lower(), post_type_dir, "json")
 
@@ -266,7 +303,7 @@ def _read_subreddit_moderators(subreddit_name: str) -> Set[str]:
 
 
 def _read_reddit_json(entity_type: EntityType, entity_name: str, json_path: str, post_type: PostType,
-                      filter_removed: bool = True, filter_moderators: bool = False,
+                      fetched_ids: Set[str], filter_removed: bool = True, filter_moderators: bool = False,
                       start_timestamp: Union[int, None] = None, end_timestamp: Union[int, None] = None,
                       ignore_no_subreddit: bool = True, desc: bool = False, properties: Optional[Set[str]] = None,
                       ignore_automoderator: bool = False) \
@@ -286,16 +323,22 @@ def _read_reddit_json(entity_type: EntityType, entity_name: str, json_path: str,
     :param properties: List of properties to fetch, for example "author" or "body" (default is fetch all)
     :param ignore_automoderator: Don't return posts by the automoderator
     """
-    moderators = _read_subreddit_moderators(entity_name) if entity_type == EntityType.SUBREDDIT else set()
+    moderators = _read_subreddit_moderators(entity_name) \
+        if entity_type == EntityType.SUBREDDIT and filter_moderators else set()
     with open(json_path, "r") as f:
         json_list = []
         for json_line in f:
-            json_obj = json.loads(json_line.strip())
-            if _should_return(json_obj, entity_type, post_type, moderators, filter_removed, filter_moderators,
-                              start_timestamp, end_timestamp, ignore_no_subreddit, ignore_automoderator):
-                if properties is not None:
-                    json_obj = {k: v for k, v in json_obj.items() if k in properties}
-                json_list.append(json_obj)
+            if len(json_line.strip()) != 0:
+                json_obj = json.loads(json_line.strip())
+                entity_id = json_obj["id"]
+                if entity_id in fetched_ids:
+                    continue
+                fetched_ids.add(entity_id)
+                if _should_return(json_obj, entity_type, post_type, moderators, filter_removed, filter_moderators,
+                                  start_timestamp, end_timestamp, ignore_no_subreddit, ignore_automoderator):
+                    if properties is not None:
+                        json_obj = {k: v for k, v in json_obj.items() if k in properties}
+                    json_list.append(json_obj)
     if desc:
         json_list.reverse()
     return json_list
@@ -319,13 +362,10 @@ def _should_return(json_obj: dict, entity_type: EntityType, post_type: PostType,
     if end_timestamp is not None and json_obj["created_utc"] >= end_timestamp:
         # filter posts on or after the end timestamp
         return False
-    if filter_removed:
-        if post_type == PostType.POST:
-            if is_removed_data_post_json(json_obj):
-                return False
-        else:
-            if _is_removed_data_comment_json(json_obj):
-                return False
+    if post_type == PostType.POST and is_removed_data_post_json(json_obj) and filter_removed:
+        return False
+    if post_type == PostType.COMMENT and is_removed_data_comment_json(json_obj) and filter_removed:
+        return False
     if ignore_automoderator and json_obj["author"].lower() == "automoderator":
         return False
     return True
@@ -342,7 +382,7 @@ def is_removed_data_post_json(json_obj: dict) -> bool:
     return json_obj["author"] == "[deleted]" or json_obj["selftext"] in ["[deleted]", "[removed]"]
 
 
-def _is_removed_data_comment_json(json_obj: dict) -> bool:
+def is_removed_data_comment_json(json_obj: dict) -> bool:
     """
     Filter out deleted:
     1. Author is "[deleted]"
@@ -397,9 +437,10 @@ def date_str_slash_to_obj(date_str: str) -> datetime.datetime.date:
     return datetime.datetime.date(datetime.datetime(int(year), int(month), int(day)))
 
 
-def read_subreddit_timeseries(timeseries_path: str, subreddit_name: str, post_type: str):
+def read_subreddit_timeseries(timeseries_path: str, series_str: str) -> pd.DataFrame:
     """
     Read existing timeseries for a subreddit
+    Suffix may be post type or the type
     """
-    file_fmt = os.path.join(timeseries_path, f"{subreddit_name.lower()}_{post_type}.csv")
+    file_fmt = os.path.join(timeseries_path, f"{series_str.lower()}.csv")
     return pd.read_csv(file_fmt, index_col=[0], parse_dates=[0]).sort_index()

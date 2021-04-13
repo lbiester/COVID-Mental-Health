@@ -1,19 +1,18 @@
 import argparse
 import logging
-import os
-from typing import List, Iterable, Tuple, Dict, Optional
+from typing import List, Iterable, Tuple, Dict
 
 import numpy as np
 from argparse_utils import enum_action
 from tqdm import tqdm
 
 from src import config
+from src.data_utils import get_text, get_all_scraped_subreddits, get_all_scraped_users, get_entity_json, \
+    read_file_by_lines
 from src.database.postgres_connect import connect_psql
 from src.enums import PostType, EntityType
 from src.liwc.liwc_postgres import read_by_id, save_to_database, exists_in_db
 from src.liwc.liwc_processor import LIWCProcessor
-from src.data_utils import get_text, get_all_scraped_subreddits, get_all_scraped_users, get_entity_json, \
-    read_file_by_lines
 
 # logging
 logging.basicConfig(format=config.LOGGING_FORMAT)
@@ -28,9 +27,8 @@ class LIWCRedditProcessor:
 
     def __init__(self, include_title=False):
         self.liwc_processor = LIWCProcessor(custom_tokenize=True, ignore_case=True)
-        self.csv_header = [self.REDDIT_ID_COL, self.IS_COMMENT_COL] + self.liwc_processor.liwc_categories \
-                          + ["word_count"]
         self.to_save = {}
+        self.post_metadata = {}
         self.post_count = 0
         self.include_title = include_title
         self.cursor = connect_psql().cursor()
@@ -67,34 +65,6 @@ class LIWCRedditProcessor:
                     post_queue.append(next_obj)
             self.process_posts(post_queue, post_type == PostType.COMMENT)
 
-    def process_or_read_posts(self, post_list: List[dict], post_type: Optional[PostType] = None) \
-            -> Dict[Tuple[str, bool], np.array]:
-        to_process_posts = []
-        to_process_comments = []
-        return_dict = {}
-        for post in post_list:
-            # if post_type is None, infer from properties
-            pt = self._infer_post_type(post) if post_type is None else post_type
-            post_key = (post["id"], pt == PostType.COMMENT)
-            if self._is_empty(post):
-                return_dict[post_key] = np.zeros(len(self.liwc_processor.liwc_categories), dtype=np.uint16)
-            elif post_key in self.to_save:
-                return_dict[post_key] = self.to_save[post_key]
-            else:
-                from_db = read_by_id(post["id"], pt == PostType.COMMENT, self.cursor)
-                if from_db is None:
-                    if pt == PostType.POST:
-                        to_process_posts.append(post)
-                    else:
-                        to_process_comments.append(post)
-                else:
-                    return_dict[post_key] = from_db
-        if len(to_process_posts) > 0:
-            return_dict.update(self.process_posts(to_process_posts, False))
-        if len(to_process_comments) > 0:
-            return_dict.update(self.process_posts(to_process_comments, True))
-        return return_dict
-
     def process_posts(self, post_list: List[dict], is_comment: bool) -> Dict[Tuple[str, bool], np.array]:
         post_text_list = [get_text(post, include_title=self.include_title) for post in post_list]
         result_list = []
@@ -106,6 +76,8 @@ class LIWCRedditProcessor:
         return_dict = {}
         for post, result in zip(post_list, result_list):
             self.to_save[(post["id"], is_comment)] = result
+            self.post_metadata[(post["id"], is_comment)] = {k: v for k, v in post.items()
+                                                            if k in {"author", "subreddit", "created_utc"}}
             return_dict[(post["id"], is_comment)] = result
 
         # save results
@@ -115,8 +87,8 @@ class LIWCRedditProcessor:
         # return dictionary with just this set of processed posts
         return return_dict
 
-    def process_post(self, post_id: str, is_comment: bool, text: str, length_normalize: bool = True) \
-            -> Tuple[np.array, int]:
+    def process_post(self, post_id: str, is_comment: bool, text: str, author: str, subreddit: str, created_utc: int,
+                     length_normalize: bool = True) -> Tuple[np.array, int]:
         if (post_id, is_comment) in self.to_save:
             raw_features = self.to_save[(post_id, is_comment)]
         else:
@@ -124,6 +96,8 @@ class LIWCRedditProcessor:
             if raw_features is None:
                 raw_features = self.liwc_processor.vectorize(text)
                 self.to_save[(post_id, is_comment)] = raw_features
+                self.post_metadata[(post_id, is_comment)] = {
+                    "author": author, "subreddit": subreddit, "created_utc": created_utc}
                 self.save_data()
         n_features = len(self.liwc_processor.liwc_categories)
         liwc_features = raw_features[:n_features]
@@ -140,8 +114,11 @@ class LIWCRedditProcessor:
             logger.info("Saving LIWC data to database")
             # save to post to features to database
             for key, value in self.to_save.items():
-                save_to_database(key[0], key[1], value, self.cursor)
+                save_to_database(key[0], key[1], self.post_metadata[key]["created_utc"],
+                                 self.post_metadata[key]["subreddit"], self.post_metadata[key]["author"], value,
+                                 self.cursor)
             self.to_save = {}
+            self.post_metadata = {}
             self.cursor.connection.commit()
             logger.info("Done saving LIWC database")
 

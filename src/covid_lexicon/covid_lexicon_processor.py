@@ -1,5 +1,6 @@
 import argparse
 import logging
+from datetime import datetime
 from itertools import islice
 from typing import List, Iterable, Tuple
 
@@ -55,8 +56,8 @@ class CovidLexiconProcessor:
     def process_entities(self, entity_type: EntityType, entity_names: List[str], post_type: PostType) -> None:
         for entity_name in tqdm(entity_names, desc="processed entites"):
             logger.info("Processing entity %s, %s", entity_name, post_type.name.lower())
-            entity_json_iterable = get_entity_json(
-                    entity_type, entity_name, post_type)
+            entity_json_iterable = get_entity_json(entity_type, entity_name, post_type,
+                                                   start_time=datetime(2019, 12, 1), end_time=datetime(2020, 6, 1))
             self._process_entities_helper(entity_json_iterable, post_type)
 
     def _process_entities_helper(self, entity_json_iterable: Iterable[dict], post_type: PostType) -> None:

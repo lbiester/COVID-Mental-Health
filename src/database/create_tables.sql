@@ -75,8 +75,10 @@ CREATE TABLE liwc_features_covid_include_title_custom_tokenize (
     work smallint NOT NULL,
     you smallint NOT NULL,
     word_count smallint NOT NULL,
+    date timestamp without time zone NOT NULL,
+    subreddit character varying(50) NOT NULL,
+    author character varying(50) NOT NULL
 );
-
 
 ALTER TABLE ONLY liwc_features_covid_include_title_custom_tokenize
     ADD CONSTRAINT liwc_features_covid_include_title_custom_tokenize_pkey PRIMARY KEY (reddit_id, comment);
